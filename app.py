@@ -7,51 +7,69 @@ from streamlit_folium import st_folium
 # Konfigurasi Halaman Streamlit
 st.set_page_config(page_title="Sales Map Maker - 12 Rayon", layout="wide")
 
-st.title("🗺️ Sales Map Maker: Konverter Data ke KML & Peta Interaktif")
-st.markdown("Unggah file Excel (`.xlsx`) atau data mentah outlet Anda untuk dipetakan ke 12 Rayon dan diunduh dalam format KML.")
+st.title("🗺️ Sales Map Maker: Konverter Data Mentah ke KML & Peta Interaktif")
+st.markdown("Unggah file Excel (`.xlsx`) atau file data mentah berformat teks (`.txt` / `|`) untuk dipetakan dan diunduh dalam format KML.")
 
 # 1. Widget Upload File di Sidebar
 st.sidebar.header("📁 Unggah Data Outlet")
-uploaded_file = st.sidebar.file_uploader("Pilih file Excel (.xlsx) atau teks (.txt/.csv)", type=["xlsx", "xls", "txt", "csv"])
+uploaded_file = st.sidebar.file_uploader("Pilih file data mentah (.txt / .csv) atau Excel (.xlsx)", type=["xlsx", "xls", "txt", "csv"])
 
 @st.cache_data
 def process_uploaded_file(file):
-    if file.name.endswith('.xlsx') or file.name.endswith('.xls'):
+    filename = file.name.lower()
+    if filename.endswith('.xlsx') or filename.endswith('.xls'):
         df = pd.read_excel(file)
     else:
+        # Baca sebagai teks dengan pemisah pipa (|) untuk data mentah EDI DMP
         try:
-            df = pd.read_csv(file, sep='\t')
-            if len(df.columns) <= 1:
-                file.seek(0)
-                df = pd.read_csv(file, sep=',')
+            content = file.getvalue().decode("utf-8")
         except:
             file.seek(0)
-            df = pd.read_csv(file)
+            content = file.getvalue().decode("latin1")
             
+        df = pd.read_csv(io.StringIO(content), sep='|')
+            
+    # Pastikan kolom koordinat bersih
     def parse_lat_lon(row):
-        lat = str(row['LATITUDE']).strip()
-        lon = str(row['LONGITUDE']).strip()
-        
-        if '.' in lat:
-            lat_f = float(lat)
-        else:
-            lat_f = float(lat)
-            while abs(lat_f) > 10:
-                lat_f /= 10
-                
-        if '.' in lon:
-            lon_f = float(lon)
-        else:
-            lon_f = float(lon)
-            while abs(lon_f) > 180:
-                lon_f /= 10
-                
-        return lat_f, lon_f
+        try:
+            lat = str(row['LATITUDE']).strip()
+            lon = str(row['LONGITUDE']).strip()
+            
+            if '.' in lat:
+                lat_f = float(lat)
+            else:
+                lat_f = float(lat)
+                while abs(lat_f) > 10:
+                    lat_f /= 10
+                    
+            if '.' in lon:
+                lon_f = float(lon)
+            else:
+                lon_f = float(lon)
+                while abs(lon_f) > 180:
+                    lon_f /= 10
+            return lat_f, lon_f
+        except:
+            return None, None
 
-    df['FIXED_LAT'] = [parse_lat_lon(row)[0] for _, row in df.iterrows()]
-    df['FIXED_LONG'] = [parse_lat_lon(row)[1] for _, row in df.iterrows()]
+    coords = [parse_lat_lon(row) for _, row in df.iterrows()]
+    df['FIXED_LAT'] = [c[0] for c in coords]
+    df['FIXED_LONG'] = [c[1] for c in coords]
+    
+    # Jika kolom RAYON belum ada atau kosong di data mentah, buat dummy atau isi default
+    if 'RAYON' not in df.columns or df['RAYON'].isna().all():
+        df['RAYON'] = 'R01'
+    else:
+        df['RAYON'] = df['RAYON'].fillna('R01').astype(str).str.strip()
+        
+    if 'SLSNAME' not in df.columns:
+        df['SLSNAME'] = 'General Sales'
+    else:
+        df['SLSNAME'] = df['SLSNAME'].fillna('General Sales').astype(str).str.strip()
+
     return df
 
+# Proses file yang diunggah atau gunakan file bawaan jika kosong
 if uploaded_file is not None:
     try:
         df = process_uploaded_file(uploaded_file)
@@ -60,7 +78,7 @@ if uploaded_file is not None:
         st.error(f"Gagal memproses file: {e}")
         st.stop()
 else:
-    st.info("👋 Silakan unggah file Excel/TXT Anda melalui panel sidebar di sebelah kiri untuk mulai.")
+    st.info("👋 Silakan unggah file data mentah (`.txt` atau `.xlsx`) Anda melalui panel sidebar di sebelah kiri.")
     try:
         df = pd.read_excel('longlat.xlsx', sheet_name='Sheet1')
         def parse_lat_lon_def(row):
@@ -73,7 +91,7 @@ else:
             return lat_f, lon_f
         df['FIXED_LAT'] = [parse_lat_lon_def(r)[0] for _, r in df.iterrows()]
         df['FIXED_LONG'] = [parse_lat_lon_def(r)[1] for _, r in df.iterrows()]
-        st.warning("⚠️ Menggunakan data bawaan sistem (`longlat.xlsx`). Unggah file Anda sendiri di sidebar untuk menggantinya.")
+        st.warning("⚠️ Menggunakan data bawaan sistem (`longlat.xlsx`). Unggah file teks mentah Anda di sidebar untuk menggantinya.")
     except:
         st.stop()
 
