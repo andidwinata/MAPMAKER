@@ -5,10 +5,10 @@ import folium
 from streamlit_folium import st_folium
 
 # Konfigurasi Halaman Streamlit
-st.set_page_config(page_title="Sales Map Maker - Hierarki Sales & Rayon", layout="wide")
+st.set_page_config(page_title="Sales Map Maker - SLSNAME & RAYON", layout="wide")
 
-st.title("🗺️ Sales Map Maker: Hierarki Sales $\rightarrow$ Rayon & Peta Interaktif")
-st.markdown("Unggah file Excel (`.xlsx`) atau file data mentah berformat teks (`.txt` / `|`) untuk dipetakan dan diunduh dalam format KML yang dikelompokkan berdasarkan **Nama Sales $\rightarrow$ Rayon**.")
+st.title("🗺️ Sales Map Maker: Hierarki SLSNAME $\rightarrow$ RAYON")
+st.markdown("Unggah file data outlet Anda. File KML yang diunduh akan otomatis terstruktur rapi: **Folder Utama (SLSNAME) $\rightarrow$ Sub-Folder (RAYON)** dengan warna penanda berbeda.")
 
 # 1. Widget Upload File di Sidebar
 st.sidebar.header("📁 Unggah Data Outlet")
@@ -54,12 +54,13 @@ def process_uploaded_file(file):
     df['FIXED_LAT'] = [c[0] for c in coords]
     df['FIXED_LONG'] = [c[1] for c in coords]
     
+    # Validasi kolom RAYON dan SLSNAME
     if 'RAYON' not in df.columns or df['RAYON'].isna().all():
         df['RAYON'] = 'R01'
     else:
         df['RAYON'] = df['RAYON'].fillna('R01').astype(str).str.strip()
         
-    if 'SLSNAME' not in df.columns:
+    if 'SLSNAME' not in df.columns or df['SLSNAME'].isna().all():
         df['SLSNAME'] = 'General Sales'
     else:
         df['SLSNAME'] = df['SLSNAME'].fillna('General Sales').astype(str).str.strip()
@@ -87,7 +88,7 @@ else:
             return lat_f, lon_f
         df['FIXED_LAT'] = [parse_lat_lon_def(r)[0] for _, r in df.iterrows()]
         df['FIXED_LONG'] = [parse_lat_lon_def(r)[1] for _, r in df.iterrows()]
-        st.warning("⚠️ Menggunakan data bawaan sistem (`longlat.xlsx`). Unggah file teks mentah Anda di sidebar untuk menggantinya.")
+        st.warning("⚠️ Menggunakan data bawaan sistem (`longlat.xlsx`). Unggah file Anda di sidebar untuk menggantinya.")
     except:
         st.stop()
 
@@ -105,11 +106,12 @@ filtered_df = df[df['RAYON'].isin(selected_rayons) & df['SLSNAME'].isin(selected
 st.sidebar.markdown("---")
 st.sidebar.subheader("📥 Unduh KML")
 
-# Fungsi Generator KML dengan Hierarki: Nama Sales > Rayon
-def generate_hierarchical_kml(data_subset):
-    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Map - Sales by Rayon</name>\n'
+# Generator KML Berbasis SLSNAME > RAYON
+def generate_slsname_rayon_kml(data_subset):
+    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Route Map (SLSNAME > RAYON)</name>\n'
     kml_footer = '</Document>\n</kml>'
     
+    # Palet Warna KML (AABBGGRR) untuk Rayon
     rayon_kml_colors = {
         'R01': 'ff0000ff', 'R02': 'ffff0000', 'R03': 'ff00ff00', 'R04': 'ff800080',
         'R05': 'ff007fff', 'R06': 'ff00ffff', 'R07': 'ff2a4aa6', 'R08': 'ffff80ff',
@@ -125,7 +127,7 @@ def generate_hierarchical_kml(data_subset):
     <Style id="style_{rayon}">
         <IconStyle>
             <color>{color}</color>
-            <scale>0.8</scale>
+            <scale>0.9</scale>
             <Icon>
                 <href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href>
             </Icon>
@@ -135,14 +137,16 @@ def generate_hierarchical_kml(data_subset):
     sales_list = sorted(data_subset['SLSNAME'].dropna().unique())
     for sales in sales_list:
         safe_sales = str(sales).replace('&', '&amp;').strip()
+        # Level 1: Folder Nama Sales (SLSNAME)
         kml_content.append(f'''
     <Folder>
-        <name>Sales: {safe_sales}</name>''')
+        <name>{safe_sales}</name>''')
         
         sales_subset = data_subset[data_subset['SLSNAME'] == sales]
         rayons_for_sales = sorted(sales_subset['RAYON'].dropna().unique())
         
         for rayon in rayons_for_sales:
+            # Level 2: Sub-folder Rayon (RAYON) di dalam folder Sales
             kml_content.append(f'''
         <Folder>
             <name>Rayon {rayon}</name>''')
@@ -175,16 +179,16 @@ def generate_hierarchical_kml(data_subset):
     kml_content.append(kml_footer)
     return "".join(kml_content)
 
-kml_data = generate_hierarchical_kml(filtered_df)
+kml_data = generate_slsname_rayon_kml(filtered_df)
 
 st.sidebar.download_button(
-    label="📥 Download File KML (Sales > Rayon)",
+    label="📥 Download KML (SLSNAME $\rightarrow$ RAYON)",
     data=kml_data,
-    file_name="Sales_Hierarchy_Map.kml",
+    file_name="Sales_SLSNAME_RAYON.kml",
     mime="application/vnd.google-earth.kml+xml"
 )
 
-# 3. Tampilkan Peta Interaktif
+# 3. Tampilkan Peta Interaktif di Web
 rayon_colors_map = {
     'R01': 'red', 'R02': 'blue', 'R03': 'green', 'R04': 'purple',
     'R05': 'orange', 'R06': 'cadetblue', 'R07': 'darkred', 'R08': 'pink',
