@@ -5,10 +5,10 @@ import folium
 from streamlit_folium import st_folium
 
 # Konfigurasi Halaman Streamlit
-st.set_page_config(page_title="Sales Map Maker - SLSNAME & RAYON", layout="wide")
+st.set_page_config(page_title="Sales Map Maker - Format Folder Rapi", layout="wide")
 
-st.title("🗺️ Sales Map Maker: Hierarki SLSNAME $\rightarrow$ RAYON")
-st.markdown("Unggah file data outlet Anda. File KML yang diunduh akan otomatis terstruktur rapi: **Folder Utama (SLSNAME) $\rightarrow$ Sub-Folder (RAYON)** dengan warna penanda berbeda.")
+st.title("🗺️ Sales Map Maker: Folder [Nama Sales] [Rayon]")
+st.markdown("Unggah file data outlet Anda. File KML yang diunduh akan otomatis menamai foldernya dengan format seperti **AKLAM R01**, **IRHAM R02**, dst., lengkap dengan warna marker yang berbeda.")
 
 # 1. Widget Upload File di Sidebar
 st.sidebar.header("📁 Unggah Data Outlet")
@@ -54,7 +54,6 @@ def process_uploaded_file(file):
     df['FIXED_LAT'] = [c[0] for c in coords]
     df['FIXED_LONG'] = [c[1] for c in coords]
     
-    # Validasi kolom RAYON dan SLSNAME
     if 'RAYON' not in df.columns or df['RAYON'].isna().all():
         df['RAYON'] = 'R01'
     else:
@@ -106,12 +105,11 @@ filtered_df = df[df['RAYON'].isin(selected_rayons) & df['SLSNAME'].isin(selected
 st.sidebar.markdown("---")
 st.sidebar.subheader("📥 Unduh KML")
 
-# Generator KML Berbasis SLSNAME > RAYON
-def generate_slsname_rayon_kml(data_subset):
-    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Route Map (SLSNAME > RAYON)</name>\n'
+# Generator KML dengan format folder "AKLAM R1", "AKLAM R2", dst.
+def generate_custom_folder_kml(data_subset):
+    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Route Map (Sales &amp; Rayon)</name>\n'
     kml_footer = '</Document>\n</kml>'
     
-    # Palet Warna KML (AABBGGRR) untuk Rayon
     rayon_kml_colors = {
         'R01': 'ff0000ff', 'R02': 'ffff0000', 'R03': 'ff00ff00', 'R04': 'ff800080',
         'R05': 'ff007fff', 'R06': 'ff00ffff', 'R07': 'ff2a4aa6', 'R08': 'ffff80ff',
@@ -136,20 +134,16 @@ def generate_slsname_rayon_kml(data_subset):
         
     sales_list = sorted(data_subset['SLSNAME'].dropna().unique())
     for sales in sales_list:
-        safe_sales = str(sales).replace('&', '&amp;').strip()
-        # Level 1: Folder Nama Sales (SLSNAME)
-        kml_content.append(f'''
-    <Folder>
-        <name>{safe_sales}</name>''')
-        
         sales_subset = data_subset[data_subset['SLSNAME'] == sales]
         rayons_for_sales = sorted(sales_subset['RAYON'].dropna().unique())
         
         for rayon in rayons_for_sales:
-            # Level 2: Sub-folder Rayon (RAYON) di dalam folder Sales
+            # Format Nama Folder: [Nama Sales] [Rayon] (Contoh: AKLAM R1)
+            folder_name = f"{sales} {rayon}".replace('&', '&amp;').strip()
+            
             kml_content.append(f'''
-        <Folder>
-            <name>Rayon {rayon}</name>''')
+    <Folder>
+        <name>{folder_name}</name>''')
             
             rayon_subset = sales_subset[sales_subset['RAYON'] == rayon]
             for _, row in rayon_subset.iterrows():
@@ -164,27 +158,25 @@ def generate_slsname_rayon_kml(data_subset):
                 desc = f"Pemilik: {pemilik}&#10;Alamat: {alamat}, {kecamatan}&#10;Rayon: {rayon}&#10;Sales: {sales}"
                 
                 kml_content.append(f'''
-            <Placemark>
-                <name>{cust_name} ({cust_no})</name>
-                <description>{desc}</description>
-                <styleUrl>#style_{rayon}</styleUrl>
-                <Point>
-                    <coordinates>{lon},{lat},0</coordinates>
-                </Point>
-            </Placemark>''')
-            kml_content.append('\n        </Folder>')
-            
-        kml_content.append('\n    </Folder>')
+        <Placemark>
+            <name>{cust_name} ({cust_no})</name>
+            <description>{desc}</description>
+            <styleUrl>#style_{rayon}</styleUrl>
+            <Point>
+                <coordinates>{lon},{lat},0</coordinates>
+            </Point>
+        </Placemark>''')
+            kml_content.append('\n    </Folder>')
         
     kml_content.append(kml_footer)
     return "".join(kml_content)
 
-kml_data = generate_slsname_rayon_kml(filtered_df)
+kml_data = generate_custom_folder_kml(filtered_df)
 
 st.sidebar.download_button(
-    label="📥 Download KML (SLSNAME $\rightarrow$ RAYON)",
+    label="📥 Download KML (Format Folder Sales Rayon)",
     data=kml_data,
-    file_name="Sales_SLSNAME_RAYON.kml",
+    file_name="Sales_Folder_Custom.kml",
     mime="application/vnd.google-earth.kml+xml"
 )
 
