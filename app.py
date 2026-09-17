@@ -5,10 +5,10 @@ import folium
 from streamlit_folium import st_folium
 
 # Konfigurasi Halaman Streamlit
-st.set_page_config(page_title="Sales Map Maker - Format Folder Rapi", layout="wide")
+st.set_page_config(page_title="Sales Map Maker - KML Export", layout="wide")
 
-st.title("🗺️ Sales Map Maker: Folder [Nama Sales] [Rayon]")
-st.markdown("Unggah file data outlet Anda. File KML yang diunduh akan otomatis menamai foldernya dengan format seperti **AKLAM R01**, **IRHAM R02**, dst., lengkap dengan warna marker yang berbeda.")
+st.title("🗺️ Sales Map Maker: Export ke Format .KML")
+st.markdown("Unggah file data outlet Anda. File yang diunduh akan otomatis berformat **`.kml`** dengan struktur folder **[Nama Sales] [Rayon]** (Contoh: `AKLAM R01`) dan warna marker yang berbeda.")
 
 # 1. Widget Upload File di Sidebar
 st.sidebar.header("📁 Unggah Data Outlet")
@@ -91,7 +91,7 @@ else:
     except:
         st.stop()
 
-# 2. Sidebar Filter & Tombol KML
+# 2. Sidebar Filter & Tombol Download .KML
 st.sidebar.header("🔍 Filter & Ekspor")
 
 all_rayons = sorted(df['RAYON'].dropna().unique())
@@ -103,11 +103,11 @@ selected_sales = st.sidebar.multiselect("Pilih Sales (SLSNAME):", all_sales, def
 filtered_df = df[df['RAYON'].isin(selected_rayons) & df['SLSNAME'].isin(selected_sales)]
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📥 Unduh KML")
+st.sidebar.subheader("📥 Unduh File .KML")
 
-# Generator KML dengan format folder "AKLAM R1", "AKLAM R2", dst.
-def generate_custom_folder_kml(data_subset):
-    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Route Map (Sales &amp; Rayon)</name>\n'
+# Generator KML murni berformat .kml dengan nama folder "AKLAM R1", "AKLAM R2", dst.
+def generate_kml_file_pure(data_subset):
+    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales and Rayon Routes</name>\n'
     kml_footer = '</Document>\n</kml>'
     
     rayon_kml_colors = {
@@ -138,7 +138,6 @@ def generate_custom_folder_kml(data_subset):
         rayons_for_sales = sorted(sales_subset['RAYON'].dropna().unique())
         
         for rayon in rayons_for_sales:
-            # Format Nama Folder: [Nama Sales] [Rayon] (Contoh: AKLAM R1)
             folder_name = f"{sales} {rayon}".replace('&', '&amp;').strip()
             
             kml_content.append(f'''
@@ -171,12 +170,12 @@ def generate_custom_folder_kml(data_subset):
     kml_content.append(kml_footer)
     return "".join(kml_content)
 
-kml_data = generate_custom_folder_kml(filtered_df)
+kml_data = generate_kml_file_pure(filtered_df)
 
 st.sidebar.download_button(
-    label="📥 Download KML (Format Folder Sales Rayon)",
+    label="📥 Download Format .KML",
     data=kml_data,
-    file_name="Sales_Folder_Custom.kml",
+    file_name="Sales_Routes.kml",
     mime="application/vnd.google-earth.kml+xml"
 )
 
