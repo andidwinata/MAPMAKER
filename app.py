@@ -5,10 +5,10 @@ import folium
 from streamlit_folium import st_folium
 
 # Konfigurasi Halaman Streamlit
-st.set_page_config(page_title="Sales Map Maker - 12 Rayon", layout="wide")
+st.set_page_config(page_title="Sales Map Maker - Hierarki Sales & Rayon", layout="wide")
 
-st.title("🗺️ Sales Map Maker: Konverter Data Mentah ke KML & Peta Interaktif")
-st.markdown("Unggah file Excel (`.xlsx`) atau file data mentah berformat teks (`.txt` / `|`) untuk dipetakan dan diunduh dalam format KML.")
+st.title("🗺️ Sales Map Maker: Hierarki Sales $\rightarrow$ Rayon & Peta Interaktif")
+st.markdown("Unggah file Excel (`.xlsx`) atau file data mentah berformat teks (`.txt` / `|`) untuk dipetakan dan diunduh dalam format KML yang dikelompokkan berdasarkan **Nama Sales $\rightarrow$ Rayon**.")
 
 # 1. Widget Upload File di Sidebar
 st.sidebar.header("📁 Unggah Data Outlet")
@@ -20,7 +20,6 @@ def process_uploaded_file(file):
     if filename.endswith('.xlsx') or filename.endswith('.xls'):
         df = pd.read_excel(file)
     else:
-        # Baca sebagai teks dengan pemisah pipa (|) untuk data mentah EDI DMP
         try:
             content = file.getvalue().decode("utf-8")
         except:
@@ -29,7 +28,6 @@ def process_uploaded_file(file):
             
         df = pd.read_csv(io.StringIO(content), sep='|')
             
-    # Pastikan kolom koordinat bersih
     def parse_lat_lon(row):
         try:
             lat = str(row['LATITUDE']).strip()
@@ -56,7 +54,6 @@ def process_uploaded_file(file):
     df['FIXED_LAT'] = [c[0] for c in coords]
     df['FIXED_LONG'] = [c[1] for c in coords]
     
-    # Jika kolom RAYON belum ada atau kosong di data mentah, buat dummy atau isi default
     if 'RAYON' not in df.columns or df['RAYON'].isna().all():
         df['RAYON'] = 'R01'
     else:
@@ -69,7 +66,6 @@ def process_uploaded_file(file):
 
     return df
 
-# Proses file yang diunggah atau gunakan file bawaan jika kosong
 if uploaded_file is not None:
     try:
         df = process_uploaded_file(uploaded_file)
@@ -109,8 +105,9 @@ filtered_df = df[df['RAYON'].isin(selected_rayons) & df['SLSNAME'].isin(selected
 st.sidebar.markdown("---")
 st.sidebar.subheader("📥 Unduh KML")
 
-def generate_kml_string(data_subset):
-    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Map - 12 Rayon</name>\n'
+# Fungsi Generator KML dengan Hierarki: Nama Sales > Rayon
+def generate_hierarchical_kml(data_subset):
+    kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Map - Sales by Rayon</name>\n'
     kml_footer = '</Document>\n</kml>'
     
     rayon_kml_colors = {
@@ -135,43 +132,55 @@ def generate_kml_string(data_subset):
         </IconStyle>
     </Style>''')
         
-    for rayon in rayons_in_data:
+    sales_list = sorted(data_subset['SLSNAME'].dropna().unique())
+    for sales in sales_list:
+        safe_sales = str(sales).replace('&', '&amp;').strip()
         kml_content.append(f'''
     <Folder>
-        <name>Rayon {rayon}</name>''')
-        subset = data_subset[data_subset['RAYON'] == rayon]
-        for _, row in subset.iterrows():
-            lat, lon = row['FIXED_LAT'], row['FIXED_LONG']
-            if pd.isna(lat) or pd.isna(lon): continue
-            cust_name = str(row.get('CUSTNAME', '')).replace('&', '&amp;')
-            cust_no = str(row.get('CUSTNO', ''))
-            alamat = str(row.get('ALAMAT', '')).replace('&', '&amp;')
-            kecamatan = str(row.get('KECAMATAN', '')).replace('&', '&amp;')
-            slsname = str(row.get('SLSNAME', '')).replace('&', '&amp;')
-            pemilik = str(row.get('PEMILIK', '')).replace('&', '&amp;')
-            
-            desc = f"Pemilik: {pemilik}&#10;Alamat: {alamat}, {kecamatan}&#10;Rayon: {rayon}&#10;Sales: {slsname}"
-            
+        <name>Sales: {safe_sales}</name>''')
+        
+        sales_subset = data_subset[data_subset['SLSNAME'] == sales]
+        rayons_for_sales = sorted(sales_subset['RAYON'].dropna().unique())
+        
+        for rayon in rayons_for_sales:
             kml_content.append(f'''
-        <Placemark>
-            <name>{cust_name} ({cust_no})</name>
-            <description>{desc}</description>
-            <styleUrl>#style_{rayon}</styleUrl>
-            <Point>
-                <coordinates>{lon},{lat},0</coordinates>
-            </Point>
-        </Placemark>''')
+        <Folder>
+            <name>Rayon {rayon}</name>''')
+            
+            rayon_subset = sales_subset[sales_subset['RAYON'] == rayon]
+            for _, row in rayon_subset.iterrows():
+                lat, lon = row.get('FIXED_LAT'), row.get('FIXED_LONG')
+                if pd.isna(lat) or pd.isna(lon): continue
+                cust_name = str(row.get('CUSTNAME', '')).replace('&', '&amp;')
+                cust_no = str(row.get('CUSTNO', ''))
+                alamat = str(row.get('ALAMAT', '')).replace('&', '&amp;')
+                kecamatan = str(row.get('KECAMATAN', '')).replace('&', '&amp;')
+                pemilik = str(row.get('PEMILIK', '')).replace('&', '&amp;')
+                
+                desc = f"Pemilik: {pemilik}&#10;Alamat: {alamat}, {kecamatan}&#10;Rayon: {rayon}&#10;Sales: {sales}"
+                
+                kml_content.append(f'''
+            <Placemark>
+                <name>{cust_name} ({cust_no})</name>
+                <description>{desc}</description>
+                <styleUrl>#style_{rayon}</styleUrl>
+                <Point>
+                    <coordinates>{lon},{lat},0</coordinates>
+                </Point>
+            </Placemark>''')
+            kml_content.append('\n        </Folder>')
+            
         kml_content.append('\n    </Folder>')
         
     kml_content.append(kml_footer)
     return "".join(kml_content)
 
-kml_data = generate_kml_string(filtered_df)
+kml_data = generate_hierarchical_kml(filtered_df)
 
 st.sidebar.download_button(
-    label="📥 Download File KML (Sesuai Filter)",
+    label="📥 Download File KML (Sales > Rayon)",
     data=kml_data,
-    file_name="Sales_Map_Filtered.kml",
+    file_name="Sales_Hierarchy_Map.kml",
     mime="application/vnd.google-earth.kml+xml"
 )
 
