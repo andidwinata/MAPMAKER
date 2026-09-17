@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import io
+import folium
+from streamlit_folium import st_folium
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(page_title="Sales Map Maker - 12 Rayon", layout="wide")
@@ -14,11 +16,9 @@ uploaded_file = st.sidebar.file_uploader("Pilih file Excel (.xlsx) atau teks (.t
 
 @st.cache_data
 def process_uploaded_file(file):
-    # Deteksi jenis file
     if file.name.endswith('.xlsx') or file.name.endswith('.xls'):
         df = pd.read_excel(file)
     else:
-        # Coba baca txt/csv dengan pemisah umum (tab atau koma)
         try:
             df = pd.read_csv(file, sep='\t')
             if len(df.columns) <= 1:
@@ -28,7 +28,6 @@ def process_uploaded_file(file):
             file.seek(0)
             df = pd.read_csv(file)
             
-    # Fungsi normalisasi koordinat jika format integer panjang
     def parse_lat_lon(row):
         lat = str(row['LATITUDE']).strip()
         lon = str(row['LONGITUDE']).strip()
@@ -53,7 +52,6 @@ def process_uploaded_file(file):
     df['FIXED_LONG'] = [parse_lat_lon(row)[1] for _, row in df.iterrows()]
     return df
 
-# Jika file belum diunggah, gunakan default file yang ada atau beri panduan
 if uploaded_file is not None:
     try:
         df = process_uploaded_file(uploaded_file)
@@ -63,7 +61,6 @@ if uploaded_file is not None:
         st.stop()
 else:
     st.info("👋 Silakan unggah file Excel/TXT Anda melalui panel sidebar di sebelah kiri untuk mulai.")
-    # Coba load file bawaan jika ada di direktori
     try:
         df = pd.read_excel('longlat.xlsx', sheet_name='Sheet1')
         def parse_lat_lon_def(row):
@@ -94,7 +91,6 @@ filtered_df = df[df['RAYON'].isin(selected_rayons) & df['SLSNAME'].isin(selected
 st.sidebar.markdown("---")
 st.sidebar.subheader("📥 Unduh KML")
 
-# Fungsi Generator KML dari DataFrame yang difilter
 def generate_kml_string(data_subset):
     kml_header = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n    <name>Sales Map - 12 Rayon</name>\n'
     kml_footer = '</Document>\n</kml>'
@@ -161,10 +157,7 @@ st.sidebar.download_button(
     mime="application/vnd.google-earth.kml+xml"
 )
 
-# 3. Tampilkan Peta Interaktif menggunakan Folium
-import folium
-from streamlit_folium import st_folium
-
+# 3. Tampilkan Peta Interaktif
 rayon_colors_map = {
     'R01': 'red', 'R02': 'blue', 'R03': 'green', 'R04': 'purple',
     'R05': 'orange', 'R06': 'cadetblue', 'R07': 'darkred', 'R08': 'pink',
@@ -208,7 +201,7 @@ for _, row in filtered_df.iterrows():
         tooltip=f"{cust_name} ({rayon})"
     ).add_to(m)
 
-st.info(Menampilkan **{len(filtered_df)}** dari total **{len(df)}** outlet pada peta.)
+st.info(f"Menampilkan **{len(filtered_df)}** dari total **{len(df)}** outlet pada peta.")
 st_folium(m, width=1200, height=550)
 
 with st.expander("Lihat Tabel Data Outlet"):
